@@ -1,63 +1,33 @@
-from django.http import Http404
-from rest_framework.generics import ListAPIView
-from bot.models import Branch
-from bot.serializers import (
-    BranchSerializer,
-    DocumentSerializer,
-    SemisterSerializer,
-    SubjectSerializer,
-)
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from bot.models import Subject
+
+import json
 
 
-class BranchListAPI(ListAPIView):
-    queryset = Branch.objects.all()
-    serializer_class = BranchSerializer
+class WebHook(APIView):
+    def post(self, request):
 
+        print(json.dumps(request.data, indent=2))
 
-class SemisterBranchListAPI(ListAPIView):
-    serializer_class = SemisterSerializer
+        if request.data["queryResult"]["intent"]["displayName"] == "getListSubjects":
+            textResponse = []
 
-    def get_queryset(self):
-        id = self.kwargs["id"]
+            for subject in Subject.objects.all():
+                textResponse.append({"text": {"text": [subject.name]}})
 
-        try:
-            return Branch.objects.get(id=id).semisters.all()
-        except:
-            raise Http404
+            return Response({"fulfillmentMessages": textResponse})
 
+        subjectCodes = request.data["queryResult"]["parameters"]["subject"]
 
-class BranchSemisterSubjectListAPI(ListAPIView):
-    serializer_class = SubjectSerializer
+        responseText = []
 
-    def get_queryset(self):
-        branchId = self.kwargs["branchId"]
-        semisterId = self.kwargs["semisterId"]
+        for code in subjectCodes:
+            try:
+                subject = Subject.objects.get(name=code)
+                for document in subject.documents.all():
+                    responseText.append({"text": {"text": [document.url]}})
+            except Exception as e:
+                responseText.append({"text": {"text": [str(e)]}})
 
-        try:
-            return (
-                Branch.objects.get(id=branchId)
-                .semisters.get(id=semisterId)
-                .subjects.all()
-            )
-        except:
-            raise Http404
-
-
-class BranchSemisterSubjectDocumentListAPI(ListAPIView):
-    serializer_class = DocumentSerializer
-
-    def get_queryset(self):
-        branchId = self.kwargs["branchId"]
-        semisterId = self.kwargs["semisterId"]
-        subjectId = self.kwargs["subjectId"]
-
-        try:
-            return (
-                Branch.objects.get(id=branchId)
-                .semisters.get(id=semisterId)
-                .subjects.get(id=subjectId)
-                .documents.all()
-            )
-        except Exception as e:
-            print(e)
-            raise Http404
+        return Response({"fulfillmentMessages": responseText})
